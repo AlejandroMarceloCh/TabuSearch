@@ -1,0 +1,7 @@
+El archivo instanciaXX.txt comienza con una línea de cabecera que contiene tres enteros separados por espacios: |O| (número de órdenes), |I| (número de ítems) y |P| (número de pasillos).
+
+A continuación aparecen |O| líneas, cada una con |I| enteros separados por espacios. Estas líneas forman la matriz de demandas, definida por el parámetro r_oi, que indica cuántas unidades de cada ítem i solicita la orden o.
+
+Seguidamente siguen |P| líneas con |I| enteros cada una, que constituyen la matriz de disponibilidad. Este bloque, definido por el parámetro u_pi, muestra cuántas unidades de cada ítem i están disponibles en el pasillo p.
+
+La última línea del archivo contiene dos enteros separados por espacios, lb y ub, que establecen el límite inferior y el límite superior de la cantidad total de unidades en la wave.
