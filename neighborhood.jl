@@ -1,3 +1,4 @@
+#neighborhood.jl
 include("solution.jl")
 
 function clasificar_instancia(roi, upi)
@@ -85,6 +86,8 @@ function generar_vecinos(sol::Solucion, roi, upi, LB, UB;
     factor_diversificacion = intensidad == :diversificar ? 2.0 : 1.0
 
     if tipo == :pequeña
+        vecinos = []
+    
         # 1. Movimientos simples (40%)
         for _ in 1:ceil(Int, max_vecinos * 0.4)
             mov = rand(1:3)
@@ -108,7 +111,7 @@ function generar_vecinos(sol::Solucion, roi, upi, LB, UB;
             length(vecinos) >= max_vecinos && return vecinos
         end
     
-        # 2. Movimientos compuestos (40%) — Agregar 2 y quitar 1
+        # 2. Movimientos compuestos (40%)
         for _ in 1:ceil(Int, max_vecinos * 0.4)
             if length(candidatos_agregar) >= 2 && !isempty(candidatos_quitar)
                 seleccionados = sample(candidatos_agregar, 2; replace=false)
@@ -123,7 +126,7 @@ function generar_vecinos(sol::Solucion, roi, upi, LB, UB;
             length(vecinos) >= max_vecinos && return vecinos
         end
     
-        # 3. Perturbación controlada (20%) — Cambiar 3 órdenes aleatorias
+        # 3. Perturbación controlada (20%)
         for _ in 1:ceil(Int, max_vecinos * 0.2)
             if length(ordenes_actuales) >= 3 && length(candidatos_agregar) >= 3
                 o_outs = sample(ordenes_actuales, 3; replace=false)
@@ -139,6 +142,26 @@ function generar_vecinos(sol::Solucion, roi, upi, LB, UB;
             end
             length(vecinos) >= max_vecinos && return vecinos
         end
+    
+        # 4. Backup: combinaciones 2–4 si no se llegó al mínimo
+        if length(vecinos) < max_vecinos
+            subconjuntos = Iterators.take(
+                Iterators.filter(x -> length(x) ≥ 2,
+                    Iterators.flatten([collect(combinations(collect(1:O), k)) for k in 2:4])
+                ), max_vecinos - length(vecinos)
+            )
+    
+            for subset in subconjuntos
+                ordenes_nueva = Set(subset)
+                nuevos_pasillos = calcular_pasillos(ordenes_nueva, roi, upi)
+                nueva = Solucion(ordenes_nueva, nuevos_pasillos)
+    
+                es_factible_rapido(nueva, roi, upi, LB, UB) && push!(vecinos, nueva)
+                length(vecinos) >= max_vecinos && break
+            end
+        end
+    
+        return vecinos
     
     
     

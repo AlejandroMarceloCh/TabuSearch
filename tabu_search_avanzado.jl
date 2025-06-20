@@ -1,4 +1,11 @@
-function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_vecinos=40)
+#tabu_search.jl
+using Random
+
+function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_vecinos=40, semilla=nothing)
+    if semilla !== nothing
+        Random.seed!(semilla)
+    end
+
     O = size(roi, 1)
     I = size(roi, 2)
     P = size(upi, 1)
@@ -32,7 +39,7 @@ function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_veci
             continue
         end
 
-        # Se penaliza ligeramente la frecuencia de visita
+        # Penalización por frecuencia
         scored_vecinos = [(v, evaluar(v, roi) - get(visitas, v.ordenes, 0) * 0.2) for v in vecinos]
         sorted_vecinos = sort(scored_vecinos, by = x -> x[2], rev=true)
 
@@ -56,7 +63,7 @@ function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_veci
             sin_mejora += 1
         end
 
-        # 📌 Actualización lista tabú adaptativa
+        # Lista tabú con tamaño oscilante
         L = clamp(length(actual.ordenes) ÷ 2 + rand(-2:2), 1, O)
         push!(lista_tabu, copy(actual.ordenes))
         length(lista_tabu) > L && popfirst!(lista_tabu)
@@ -75,5 +82,5 @@ function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_veci
          label = "Objetivo", linewidth = 2, legend = :bottomright)
     savefig("results/evolucion_tabu.png")
 
-    return mejor, mejor_obj
+    return mejor, mejor_obj, evolucion_obj  
 end
