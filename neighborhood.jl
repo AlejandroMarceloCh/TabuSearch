@@ -164,71 +164,119 @@ function generar_vecinos(sol::Solucion, roi, upi, LB, UB;
         return vecinos
     
     
-    
     elseif tipo == :mediana
-        n_add = Int(ceil(8 * factor_diversificacion))
-        n_rem = Int(ceil(5 * factor_diversificacion))
-        n_swaps = Int(ceil(6 * factor_diversificacion))
+        vecinos = Solucion[]
 
+        # Parámetros refinados
+        n_add = Int(ceil(10 * factor_diversificacion))
+        n_rem = Int(ceil(6 * factor_diversificacion))
+        n_swap = Int(ceil(6 * factor_diversificacion))
+        n_mix = Int(ceil(4 * factor_diversificacion))
+
+        function evaluar_y_push(cand)
+            if !in(cand, vecinos)
+                sol_cand = Solucion(cand, calcular_pasillos(cand, roi, upi))
+                if es_factible_rapido(sol_cand, roi, upi, LB, UB) &&
+                   evaluar(sol_cand, roi) ≥ 2.0  # filtro mínimo
+                    push!(vecinos, sol_cand)
+                end
+            end
+        end
+
+        # A) Agregar órdenes
         for o in sample_ordenes_inteligente(candidatos_agregar, densidades, n_add)
             nueva = copy(sol.ordenes)
             push!(nueva, o)
-            intentar_push(nueva)
-            length(vecinos) >= max_vecinos && return vecinos
+            evaluar_y_push(nueva)
+            length(vecinos) ≥ max_vecinos && return vecinos
         end
 
-        for o in sample_ordenes_inteligente(candidatos_quitar, densidades, n_rem)
+        # B) Remover órdenes
+        for o in sample_ordenes_inteligente(candidatos_quitar, densidades, n_rem, tipo=:baja_densidad)
             nueva = setdiff(sol.ordenes, [o])
-            intentar_push(nueva)
-            length(vecinos) >= max_vecinos && return vecinos
+            evaluar_y_push(nueva)
+            length(vecinos) ≥ max_vecinos && return vecinos
         end
 
-        for _ in 1:n_swaps
+        # C) Swaps
+        for _ in 1:n_swap
             if isempty(ordenes_actuales) || isempty(candidatos_reemplazo)
                 continue
             end
-            o_out = rand(ordenes_actuales)
-            o_in = rand(sample_ordenes_inteligente(candidatos_reemplazo, densidades, 1))
+            o_out = sample_ordenes_inteligente(ordenes_actuales, densidades, 1, tipo=:baja_densidad)[1]
+            o_in = sample_ordenes_inteligente(candidatos_reemplazo, densidades, 1)[1]
             nueva = copy(sol.ordenes)
             delete!(nueva, o_out)
             push!(nueva, o_in)
-            intentar_push(nueva)
-            length(vecinos) >= max_vecinos && return vecinos
+            evaluar_y_push(nueva)
+            length(vecinos) ≥ max_vecinos && return vecinos
         end
 
+        # D) Mezcla
+        for _ in 1:n_mix
+            if length(candidatos_agregar) ≥ 2 && !isempty(candidatos_quitar)
+                o_add = sample_ordenes_inteligente(candidatos_agregar, densidades, 2)
+                o_rem = sample_ordenes_inteligente(ordenes_actuales, densidades, 1, tipo=:baja_densidad)[1]
+                nueva = copy(sol.ordenes)
+                push!(nueva, o_add[1])
+                push!(nueva, o_add[2])
+                delete!(nueva, o_rem)
+                evaluar_y_push(nueva)
+                length(vecinos) ≥ max_vecinos && return vecinos
+            end
+        end
+    
     else
-        # Para grandes y gigantes
-        n_movimientos = tipo == :grande ? Int(ceil(8 * factor_diversificacion)) : Int(ceil(5 * factor_diversificacion))
-        rmin, rmax = tipo == :grande ? (3, 8) : (5, 15)
-        amin, amax = tipo == :grande ? (2, 7) : (3, 12)
-
+        vecinos = Solucion[]
+    
+        # Parámetros adaptativos según intensidad
+        if control !== nothing && control.intensidad == :reintensificar
+            n_movimientos = tipo == :grande ? 12 : 10
+            rmin, rmax = tipo == :grande ? (2, 6) : (3, 10)
+            amin, amax = tipo == :grande ? (6, 12) : (8, 16)
+        else
+            n_movimientos = tipo == :grande ? Int(ceil(8 * factor_diversificacion)) : Int(ceil(6 * factor_diversificacion))
+            rmin, rmax = tipo == :grande ? (3, 8) : (5, 15)
+            amin, amax = tipo == :grande ? (2, 7) : (3, 12)
+        end
+    
         for _ in 1:n_movimientos
             n_remove = rand(rmin:ceil(Int, rmax * factor_diversificacion))
             n_add    = rand(amin:ceil(Int, amax * factor_diversificacion))
-            
+    
             if length(ordenes_actuales) >= n_remove
                 ordenes_nueva = copy(sol.ordenes)
-                ordenes_a_remover = rand() < 0.5 ?
+    
+                ordenes_a_remover = rand() < 0.6 ?
                     sample_ordenes_inteligente(ordenes_actuales, densidades, n_remove, tipo=:baja_densidad) :
                     sample(ordenes_actuales, n_remove; replace=false)
-
+    
                 for o in ordenes_a_remover
                     delete!(ordenes_nueva, o)
                 end
-
+    
                 candidatos_actualizados = setdiff(1:O, ordenes_nueva)
                 if length(candidatos_actualizados) >= n_add
-                    nuevos = sample_ordenes_inteligente(candidatos_actualizados, densidades, n_add)
+                    nuevos = rand() < 0.7 ?
+                        sample_ordenes_inteligente(candidatos_actualizados, densidades, n_add) :
+                        sample(candidatos_actualizados, n_add; replace=false)
+    
                     for o in nuevos
                         push!(ordenes_nueva, o)
                     end
-
-                    intentar_push(ordenes_nueva)
-                    length(vecinos) >= max_vecinos && return vecinos
+    
+                    pasillos = calcular_pasillos(ordenes_nueva, roi, upi)
+                    nueva_sol = Solucion(ordenes_nueva, pasillos)
+    
+                    if es_factible_rapido(nueva_sol, roi, upi, LB, UB)
+                        push!(vecinos, nueva_sol)
+                        length(vecinos) >= max_vecinos && return vecinos
+                    end
                 end
             end
         end
+    
+        return vecinos
     end
-
-    return vecinos
+    
 end

@@ -1,7 +1,8 @@
-#tabu_search.jl
-using Random
+function tabu_search(roi, upi, LB, UB; 
+    max_iter=100, max_no_improve=10, max_vecinos=40, 
+    semilla=nothing, devolver_evolucion=false, 
+    solucion_inicial=nothing)
 
-function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_vecinos=40, semilla=nothing)
     if semilla !== nothing
         Random.seed!(semilla)
     end
@@ -19,31 +20,37 @@ function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_veci
 
     control = ControlAdaptativo()
 
-    # ✅ Solución inicial factible construida progresivamente
-    actual = generar_solucion_inicial(roi, upi, LB, UB)
+    # ✅ USAMOS LA SOLUCIÓN INICIAL SI SE PROPORCIONA
+    if solucion_inicial == nothing
+        actual = generar_solucion_inicial(roi, upi, LB, UB)
+    else
+        actual = solucion_inicial
+    end
+
     mejor = actual
     mejor_obj = evaluar(mejor, roi)
     evolucion_obj = Float64[]
 
     iter = 0
     sin_mejora = 0
+    contador_vecinos_vacios = 0
+
     println("\n🚀 Tabu Search iniciado...")
 
     while iter < max_iter && sin_mejora < max_no_improve
         vecinos = generar_vecinos(actual, roi, upi, LB, UB;
                                   max_vecinos=max_vecinos, control=control)
 
-        if isempty(vecinos)
+        # ✅ Protección extra por si generar_vecinos retorna nothing por error
+        if vecinos === nothing || isempty(vecinos)
+            contador_vecinos_vacios += 1
             println("⚠️ Iter $iter: Sin vecinos factibles.")
             iter += 1
             continue
         end
 
-        # Penalización por frecuencia
         scored_vecinos = [(v, evaluar(v, roi) - get(visitas, v.ordenes, 0) * 0.2) for v in vecinos]
         sorted_vecinos = sort(scored_vecinos, by = x -> x[2], rev=true)
-
-        # Selección con lista tabú
         candidato = findfirst(v -> v[1].ordenes ∉ lista_tabu, sorted_vecinos)
         nuevo = candidato !== nothing ? sorted_vecinos[candidato][1] : sorted_vecinos[1][1]
 
@@ -63,7 +70,6 @@ function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_veci
             sin_mejora += 1
         end
 
-        # Lista tabú con tamaño oscilante
         L = clamp(length(actual.ordenes) ÷ 2 + rand(-2:2), 1, O)
         push!(lista_tabu, copy(actual.ordenes))
         length(lista_tabu) > L && popfirst!(lista_tabu)
@@ -76,11 +82,14 @@ function tabu_search(roi, upi, LB, UB; max_iter=100, max_no_improve=10, max_veci
     println("📦 Órdenes: ", mejor.ordenes)
     println("🚪 Pasillos: ", mejor.pasillos)
 
-    plot(1:length(evolucion_obj), evolucion_obj,
-         title = "Evolución de la función objetivo",
-         xlabel = "Iteración", ylabel = "Evaluación",
-         label = "Objetivo", linewidth = 2, legend = :bottomright)
-    savefig("results/evolucion_tabu.png")
-
-    return mejor, mejor_obj, evolucion_obj  
+    if devolver_evolucion
+        return mejor, mejor_obj, evolucion_obj, contador_vecinos_vacios
+    else
+        plot(1:length(evolucion_obj), evolucion_obj,
+             title = "Evolución de la función objetivo",
+             xlabel = "Iteración", ylabel = "Evaluación",
+             label = "Objetivo", linewidth = 2, legend = :bottomright)
+        savefig("results/evolucion_tabu.png")
+        return mejor, contador_vecinos_vacios
+    end
 end

@@ -7,14 +7,15 @@ include("neighborhood.jl")
 include("tabu_search_avanzado.jl")
 include("data_loader.jl")
 
-using Random
-using StatsBase
 using Combinatorics
-
 using Plots
+using Printf
+using Random
+using Statistics
+using StatsBase
 
 function main()
-    ruta = "data/instancia20.txt" 
+    ruta = "data/instancia05.txt" 
     roi, upi, LB, UB = cargar_instancia(ruta)
 
     tipo = clasificar_instancia(roi, upi)

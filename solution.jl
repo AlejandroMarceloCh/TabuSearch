@@ -1,6 +1,8 @@
 # ----------------------------------------
 # Estructura de Solución y Funciones Base
 # ----------------------------------------
+using Random
+
 
 mutable struct Solucion
     ordenes::Set{Int}
@@ -29,27 +31,29 @@ function es_factible(sol::Solucion, roi, upi, LB, UB)
 end
 
 # Verificación rápida
-function es_factible_rapido(sol::Solucion, roi, upi, LB, UB)
-    total = sum(sum(roi[o, :] for o in sol.ordenes))
-    if total < LB || total > UB
+function es_factible_rapido(sol::Solucion, roi::Matrix{Int}, upi::Matrix{Int}, LB::Int, UB::Int)
+    if isempty(sol.pasillos)
         return false
     end
 
-    cobertura = zeros(Int, size(roi, 2))
-    for p in sol.pasillos
-        cobertura .+= upi[p, :]
-    end
+    I = size(roi, 2)
+    total = zeros(Int, I)
 
     for o in sol.ordenes
-        for i in 1:size(roi, 2)
-            if roi[o, i] > 0 && cobertura[i] < roi[o, i]
-                return false
-            end
+        total .+= roi[o, :]
+    end
+
+    for i in 1:I
+        suma = sum(upi[p, i] for p in sol.pasillos; init=0)
+        if total[i] > suma
+            return false
         end
     end
 
-    return true
+    unidades = sum(total)
+    return LB ≤ unidades ≤ UB
 end
+
 
 # ----------------------------------------
 # Cálculo de pasillos para una solución
@@ -125,13 +129,15 @@ end
 # Control Adaptativo para la Búsqueda Tabú
 # ----------------------------------------
 
+
 mutable struct ControlAdaptativo
     iteraciones_sin_mejora::Int
     mejoras_recientes::Vector{Float64}
-    intensidad::Symbol  # :intensificar o :diversificar
+    intensidad::Symbol  # :intensificar, :diversificar, :reintensificar
     contador_diversificacion::Int
+    contador_reintensificar::Int
 
-    ControlAdaptativo() = new(0, Float64[], :intensificar, 0)
+    ControlAdaptativo() = new(0, Float64[], :intensificar, 0, 0)
 end
 
 function actualizar_control!(control::ControlAdaptativo, mejora::Float64)
@@ -142,17 +148,23 @@ function actualizar_control!(control::ControlAdaptativo, mejora::Float64)
 
     if mejora > 0
         control.iteraciones_sin_mejora = 0
+        control.contador_diversificacion = 0
+        control.contador_reintensificar = 0
         control.intensidad = :intensificar
     else
         control.iteraciones_sin_mejora += 1
-
-        # Verificar si hay estancamiento por falta de variabilidad
         varianza_baja = std(control.mejoras_recientes) < 0.05
         demasiadas_sin_mejora = control.iteraciones_sin_mejora > 7
 
         if demasiadas_sin_mejora || varianza_baja
+            control.contador_diversificacion += 1
             control.intensidad = :diversificar
+
+            if control.contador_diversificacion > 5
+                control.intensidad = :reintensificar
+                control.contador_reintensificar += 1
+                control.contador_diversificacion = 0  # reinicia para evitar loops
+            end
         end
     end
 end
-
