@@ -324,7 +324,7 @@ end
 Ejemplo 2: Experimentos múltiples sobre una instancia
 """
 function ejemplo_experimentos()
-    resultado = experimentos_multiples("../data/instancia10.txt", 5; 
+    resultado = experimentos_multiples("../data/instancia03.txt", 50; 
                                      semilla_base=42, guardar_evolucion=true)
     return resultado
 end

@@ -113,51 +113,147 @@ end
 """
 Generación para instancias gigantes normales
 """
+# 2. En initial_solution.jl - Estrategia mejorada para maximizar objetivo
 function generar_gigante_normal(roi::Matrix{Int}, upi::Matrix{Int}, LB::Int, UB::Int, config::InstanceConfig)
     O = size(roi, 1)
     
-    println("⚡ Generación rápida para gigante...")
+    println("⚡ Generación adaptativa para instancia gigante...")
     
-    for intento in 1:20
+    # Pre-análisis de la instancia
+    valores_ordenes = [sum(roi[o, :]) for o in 1:O]
+    valor_promedio = sum(valores_ordenes) / O
+    valor_mediano = sort(valores_ordenes)[O ÷ 2]
+    
+    # Estimar cuántas órdenes necesitamos
+    objetivo_llenado = config.parametros.factor_llenado_objetivo
+    target_unidades = UB * objetivo_llenado
+
+    ordenes_estimadas = ceil(Int, target_unidades / max(valor_mediano, 1e-6))
+    println("📊 Target: $(round(Int, target_unidades)) unidades (~$(ordenes_estimadas) órdenes estimadas)")
+    
+    mejor_solucion = nothing
+    mejor_score = 0.0
+    
+    # Múltiples estrategias con diferentes enfoques
+    for estrategia in 1:15
         ordenes_seleccionadas = Set{Int}()
         unidades_actuales = 0
-        valores_ordenes = [sum(roi[o, :]) for o in 1:O]
         
-        # Estrategia: seleccionar órdenes empezando por las más pequeñas
-        ordenes_ordenadas = sortperm(valores_ordenes, rev=false)
+        # Variar estrategia de selección
+        if estrategia <= 5
+            # Estrategia 1: Greedy por valor
+            indices = sortperm(valores_ordenes, rev=(estrategia % 2 == 0))
+        elseif estrategia <= 10
+            # Estrategia 2: Selección por rangos
+            inicio = (estrategia - 6) * O ÷ 5
+            fin = min(O, inicio + O ÷ 3)
+            indices = shuffle(collect(inicio+1:fin))
+        else
+            # Estrategia 3: Completamente aleatoria
+            indices = randperm(O)
+        end
         
-        for o in ordenes_ordenadas
+        # Factor de llenado variable
+        factor_llenado = 0.6 + 0.35 * rand()  # Entre 60% y 95%
+        limite_superior = UB * factor_llenado
+        
+        for idx in indices
+            o = idx <= O ? idx : indices[1]  # Seguridad
             unidades_orden = valores_ordenes[o]
-            if unidades_actuales + unidades_orden <= UB
+            
+            if unidades_actuales + unidades_orden <= limite_superior
                 push!(ordenes_seleccionadas, o)
                 unidades_actuales += unidades_orden
                 
-                # Parar cuando tengamos suficiente
-                if unidades_actuales >= LB && unidades_actuales >= UB * 0.5
+                # No parar hasta tener suficientes unidades
+                if length(ordenes_seleccionadas) >= config.parametros.max_ordenes
                     break
                 end
             end
-            
-            # Límite para evitar complejidad excesiva
-            if length(ordenes_seleccionadas) >= config.parametros.max_ordenes
-                break
-            end
         end
         
+        # Verificar factibilidad
         if unidades_actuales >= LB && !isempty(ordenes_seleccionadas)
             pasillos = calcular_pasillos_optimo(ordenes_seleccionadas, roi, upi)
             sol = Solucion(ordenes_seleccionadas, pasillos)
             
             if es_factible_rapido(sol, roi, upi, LB, UB)
-                println("✅ Solución gigante generada")
-                return sol
+                score = evaluar(sol, roi)
+                if score > mejor_score
+                    mejor_solucion = sol
+                    mejor_score = score
+                    println("✅ Estrategia exitosa: score=$(round(score, digits=2)), órdenes=$(length(ordenes_seleccionadas))")
+                end
             end
         end
     end
     
-    # Fallback conservador
-    return crear_solucion_conservadora(roi, upi, LB, UB, config)
+    # Si no encontramos nada bueno, usar construcción voraz mejorada
+    if mejor_solucion === nothing
+        println("🔄 Usando construcción voraz mejorada...")
+        mejor_solucion = construccion_voraz_mejorada(roi, upi, LB, UB, config)
+    end
+    
+    return mejor_solucion
 end
+
+
+# 3. Nueva función de construcción voraz mejorada
+function construccion_voraz_mejorada(roi::Matrix{Int}, upi::Matrix{Int}, LB::Int, UB::Int, config::InstanceConfig)
+    O, I, P = size(roi, 1), size(roi, 2), size(upi, 1)
+    
+    # Calcular utilidad de cada orden (valor/complejidad)
+    utilidades = Float64[]
+    for o in 1:O
+        valor = sum(roi[o, :])
+        items_distintos = count(roi[o, :] .> 0)
+        utilidad = valor / (1 + 0.1 * items_distintos)  # Penalizar órdenes con muchos ítems
+        push!(utilidades, utilidad)
+    end
+    
+    # Ordenar por utilidad
+    indices_utilidad = sortperm(utilidades, rev=true)
+    
+    # Construir solución llenando hasta cerca del UB
+    ordenes_seleccionadas = Set{Int}()
+    unidades_actuales = 0
+    target = UB * 0.9  # Llenar hasta 90% para maximizar objetivo
+    
+    for o in indices_utilidad
+        unidades_orden = sum(roi[o, :])
+        
+        if unidades_actuales + unidades_orden <= target
+            # Verificación rápida cada 50 órdenes
+            if length(ordenes_seleccionadas) % 50 == 49
+                temp_ordenes = copy(ordenes_seleccionadas)
+                push!(temp_ordenes, o)
+                if !validar_factibilidad_basica(temp_ordenes, roi, upi, LB, target)
+                    continue
+                end
+            end
+            
+            push!(ordenes_seleccionadas, o)
+            unidades_actuales += unidades_orden
+        end
+        
+        if length(ordenes_seleccionadas) >= config.parametros.max_ordenes
+            break
+        end
+    end
+    
+    # Asegurar que cumplimos con LB
+    if unidades_actuales >= LB
+        pasillos = calcular_pasillos_optimo(ordenes_seleccionadas, roi, upi)
+        sol = Solucion(ordenes_seleccionadas, pasillos)
+        
+        if es_factible_rapido(sol, roi, upi, LB, UB)
+            return sol
+        end
+    end
+    
+    return nothing
+end
+
 
 """
 Generación específica para instancias ultra-patológicas (como instancia 10)

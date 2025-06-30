@@ -38,34 +38,40 @@ function crear_configuracion_automatica(roi::Matrix{Int}, upi::Matrix{Int}, LB::
     return InstanceConfig(tipo, es_gigante, es_patologica, factor, parametros, mostrar_detalles)
 end
 
+
+
 """
 Calcula TODOS los parámetros de forma dinámica según características de la instancia
 """
+
+# 1. En config_manager.jl - Parámetros más adaptativos basados en el objetivo potencial
 function calcular_parametros_dinamicos(O::Int, I::Int, P::Int, tipo::Symbol, 
                                      es_gigante::Bool, es_patologica::Bool, factor::Float64)
+    
+    # Calcular densidad de la instancia para ajustes más finos
+    densidad = (O * I) / (O + I + P)^2
+    es_densa = densidad > 100
     
     # PARÁMETROS PARA TABU SEARCH
     if es_gigante
         if es_patologica
-            # Parámetros relajados para gigantes patológicas
             max_iter = Int(ceil(200 * factor))
             max_no_improve = Int(ceil(50 * factor))
             max_vecinos = Int(ceil(100 * factor))
         else
-            # Parámetros para gigantes normales
-            es_masiva = (O > 8000 || I > 8000 || O * I > 70_000_000)
-            if es_masiva
+            # Ajuste basado en densidad y tamaño
+            if es_densa
                 max_iter = 150
-                max_no_improve = 25
+                max_no_improve = 30
                 max_vecinos = 35
             else
-                max_iter = 80
-                max_no_improve = 12
-                max_vecinos = 20
+                max_iter = 100
+                max_no_improve = 20
+                max_vecinos = 25
             end
         end
     else
-        # Parámetros para instancias normales
+        # Sin cambios para normales
         if tipo == :mediana
             max_iter = 175
             max_no_improve = 25
@@ -81,26 +87,37 @@ function calcular_parametros_dinamicos(O::Int, I::Int, P::Int, tipo::Symbol,
         end
     end
     
-    # PARÁMETROS PARA GENERACIÓN INICIAL
+    # PARÁMETROS PARA GENERACIÓN INICIAL - CRÍTICO
     if es_patologica
         max_ordenes = Int(ceil(O * min(0.9, 0.4 + factor * 0.2)))
         max_pasillos = Int(ceil(P * min(0.8, 0.3 + factor * 0.25)))
         max_intentos_inicial = 50 + Int(ceil(factor * 30))
     else
         if es_gigante
-            max_ordenes = min(O ÷ 3, max(2000, O ÷ 8))
-            max_pasillos = min(P ÷ 3, max(50, min(100, O ÷ 20)))
+            # Ajuste dinámico basado en relación O/P para estimar objetivo
+            ratio_op = O / P
+            if ratio_op > 10  # Muchas órdenes por pasillo (potencial objetivo alto)
+                max_ordenes = Int(ceil(O * 0.6))  # Permitir hasta 60%
+            elseif ratio_op > 5
+                max_ordenes = Int(ceil(O * 0.4))  # Permitir hasta 40%
+            else
+                max_ordenes = Int(ceil(O * 0.3))  # Permitir hasta 30%
+            end
+            max_ordenes = min(max_ordenes, 3000)  # Límite práctico
+            
+            # Pasillos basado en P
+            max_pasillos = min(P, max(50, Int(ceil(P * 0.6))))
         else
             max_ordenes = min(O ÷ 4, max(800, O ÷ 6))
             max_pasillos = min(P ÷ 4, max(25, min(50, O ÷ 15)))
         end
-        max_intentos_inicial = tipo == :pequeña ? 100 : (tipo == :mediana ? 80 : 60)
+        max_intentos_inicial = es_gigante ? 40 : 60
     end
     
-    # PARÁMETROS ADICIONALES
-    tabu_size = max(5, O ÷ (es_gigante ? 15 : 8))
+    # Resto de parámetros
+    tabu_size = max(5, min(100, O ÷ (es_gigante ? 20 : 10)))
     intensidad_perturbacion = es_patologica ? 0.4 : (es_gigante ? 0.3 : 0.25)
-    log_interval = es_gigante ? (es_patologica ? 30 : 50) : 25
+    log_interval = es_gigante ? 50 : 25
     
     return (
         # Tabu Search
@@ -116,9 +133,9 @@ function calcular_parametros_dinamicos(O::Int, I::Int, P::Int, tipo::Symbol,
         
         # Vecindarios y perturbación
         intensidad_perturbacion = intensidad_perturbacion,
-        max_intercambios = es_gigante ? 15 : (tipo == :pequeña ? 15 : 20),
-        max_crecimientos = es_gigante ? 10 : (tipo == :pequeña ? 10 : 15),
-        max_reducciones = es_gigante ? 8 : (tipo == :pequeña ? 8 : 10),
+        max_intercambios = es_gigante ? 20 : 25,
+        max_crecimientos = es_gigante ? 15 : 20,
+        max_reducciones = es_gigante ? 10 : 15,
         
         # Control de logging
         log_interval = log_interval,
@@ -127,9 +144,14 @@ function calcular_parametros_dinamicos(O::Int, I::Int, P::Int, tipo::Symbol,
         # Estrategias especiales
         usar_reparacion_agresiva = es_patologica,
         permitir_todos_movimientos = es_patologica,
-        usar_escape_temprano = es_gigante
+        usar_escape_temprano = es_gigante,
+        
+        # Nuevo parámetro
+        factor_llenado_objetivo = es_gigante ? 0.85 : 0.7  # Llenar más cerca del UB
     )
 end
+
+
 
 # ========================================
 # FUNCIONES DE PRINT LIMPIAS

@@ -191,20 +191,49 @@ function crecimiento_controlado(sol::Solucion, roi::Matrix{Int}, upi::Matrix{Int
     demanda_actual = sum(sum(roi[o, :]) for o in sol.ordenes)
     max_intentos = config.parametros.max_crecimientos
     
+    # Permitir crecimiento más agresivo si estamos lejos del UB
+    margen_disponible = UB - demanda_actual
+    es_conservador = margen_disponible < UB * 0.2
+    
     for _ in 1:max_intentos
-        o_new = rand(candidatos_externos)
-        demanda_extra = sum(roi[o_new, :])
-        
-        if demanda_actual + demanda_extra <= UB
-            nuevas_ordenes = copy(sol.ordenes)
-            push!(nuevas_ordenes, o_new)
+        if es_conservador
+            # Selección cuidadosa cuando estamos cerca del límite
+            valores_candidatos = [(o, sum(roi[o, :])) for o in candidatos_externos]
+            sort!(valores_candidatos, by=x->x[2])  # Ordenar por tamaño
             
-            if validar_factibilidad_basica(nuevas_ordenes, roi, upi, LB, UB)
-                nuevos_pasillos = calcular_pasillos_optimo(nuevas_ordenes, roi, upi)
-                candidato = Solucion(nuevas_ordenes, nuevos_pasillos)
+            # Buscar orden que quepa
+            for (o_new, demanda_extra) in valores_candidatos
+                if demanda_actual + demanda_extra <= UB
+                    nuevas_ordenes = copy(sol.ordenes)
+                    push!(nuevas_ordenes, o_new)
+                    
+                    if validar_factibilidad_basica(nuevas_ordenes, roi, upi, LB, UB)
+                        nuevos_pasillos = calcular_pasillos_optimo(nuevas_ordenes, roi, upi)
+                        candidato = Solucion(nuevas_ordenes, nuevos_pasillos)
+                        
+                        if es_factible_rapido(candidato, roi, upi, LB, UB)
+                            push!(vecinos, candidato)
+                            break
+                        end
+                    end
+                end
+            end
+        else
+            # Selección aleatoria cuando hay margen
+            o_new = rand(candidatos_externos)
+            demanda_extra = sum(roi[o_new, :])
+            
+            if demanda_actual + demanda_extra <= UB
+                nuevas_ordenes = copy(sol.ordenes)
+                push!(nuevas_ordenes, o_new)
                 
-                if es_factible_rapido(candidato, roi, upi, LB, UB)
-                    push!(vecinos, candidato)
+                if validar_factibilidad_basica(nuevas_ordenes, roi, upi, LB, UB)
+                    nuevos_pasillos = calcular_pasillos_optimo(nuevas_ordenes, roi, upi)
+                    candidato = Solucion(nuevas_ordenes, nuevos_pasillos)
+                    
+                    if es_factible_rapido(candidato, roi, upi, LB, UB)
+                        push!(vecinos, candidato)
+                    end
                 end
             end
         end
@@ -212,6 +241,7 @@ function crecimiento_controlado(sol::Solucion, roi::Matrix{Int}, upi::Matrix{Int
     
     return vecinos
 end
+
 
 """
 Reducción controlada: elimina órdenes manteniendo factibilidad

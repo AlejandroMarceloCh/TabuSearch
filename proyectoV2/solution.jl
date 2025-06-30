@@ -89,6 +89,7 @@ end
 """
 Verificación rápida de factibilidad - VERSIÓN DEFINITIVA
 """
+# 4. En solution.jl - Optimización general de factibilidad
 function es_factible_rapido(sol::Solucion, roi::Matrix{Int}, upi::Matrix{Int}, LB::Int, UB::Int)
     if isempty(sol.pasillos) || isempty(sol.ordenes)
         return false
@@ -102,12 +103,15 @@ function es_factible_rapido(sol::Solucion, roi::Matrix{Int}, upi::Matrix{Int}, L
         return false
     end
     
-    # Para instancias gigantes: verificación optimizada
-    es_gigante = (O > 2000 || I > 5000 || O * I > 10_000_000)
+    # Clasificar por tamaño para optimización
+    es_gigante = (O > 1000 || I > 2000 || O * I > 5_000_000)
+    es_muy_grande = I > 5000  # Muchos ítems
     
     if es_gigante
-        # Solo verificar ítems con demanda real
+        # Para gigantes: usar diccionario y verificación selectiva
         items_con_demanda = Dict{Int, Int}()
+        
+        # Solo procesar ítems con demanda
         for o in sol.ordenes
             for i in 1:I
                 if roi[o, i] > 0
@@ -116,14 +120,54 @@ function es_factible_rapido(sol::Solucion, roi::Matrix{Int}, upi::Matrix{Int}, L
             end
         end
         
-        for (i, demanda) in items_con_demanda
-            cobertura_disponible = sum(upi[p, i] for p in sol.pasillos; init=0)
-            if demanda > cobertura_disponible
-                return false
+        # Verificar cobertura
+        if es_muy_grande && length(items_con_demanda) > 1000
+            # Para instancias muy grandes: verificación por muestreo
+            items_verificar = collect(keys(items_con_demanda))
+            
+            # Verificar todos los ítems con alta demanda
+            for i in items_verificar
+                demanda = items_con_demanda[i]
+                if demanda > 10  # Umbral de demanda significativa
+                    cobertura = sum(upi[p, i] for p in sol.pasillos if upi[p, i] > 0)
+                    if demanda > cobertura
+                        return false
+                    end
+                end
+            end
+            
+            # Muestreo aleatorio para el resto
+            items_baja_demanda = filter(i -> items_con_demanda[i] <= 10, items_verificar)
+            if length(items_baja_demanda) > 100
+                muestra = rand(items_baja_demanda, 100)
+                for i in muestra
+                    demanda = items_con_demanda[i]
+                    cobertura = sum(upi[p, i] for p in sol.pasillos if upi[p, i] > 0)
+                    if demanda > cobertura
+                        return false
+                    end
+                end
+            else
+                # Verificar todos si son pocos
+                for i in items_baja_demanda
+                    demanda = items_con_demanda[i]
+                    cobertura = sum(upi[p, i] for p in sol.pasillos if upi[p, i] > 0)
+                    if demanda > cobertura
+                        return false
+                    end
+                end
+            end
+        else
+            # Verificación completa para gigantes con menos ítems
+            for (i, demanda) in items_con_demanda
+                cobertura = sum(upi[p, i] for p in sol.pasillos if upi[p, i] > 0)
+                if demanda > cobertura
+                    return false
+                end
             end
         end
     else
-        # Verificación completa para instancias normales
+        # Para instancias normales: verificación completa estándar
         demanda_por_item = zeros(Int, I)
         for o in sol.ordenes
             for i in 1:I
@@ -143,6 +187,7 @@ function es_factible_rapido(sol::Solucion, roi::Matrix{Int}, upi::Matrix{Int}, L
     
     return true
 end
+
 
 """
 Validación básica sin calcular pasillos completos
