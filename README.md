@@ -80,11 +80,6 @@ println("Tiempo: $(resultado.tiempo)s")
 println("Factible: $(resultado.factible)")
 ```
 
-### 🌙 **Experimentos Nocturnos (Solo Enormes)**
-```bash
-julia experimentos_enormes_nocturno.jl
-```
-
 ## 🧬 **Algoritmos por Categoría**
 
 ### 🐣 **Solver PEQUEÑAS** 
