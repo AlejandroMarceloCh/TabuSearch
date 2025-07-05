@@ -1,0 +1,10 @@
+# Ignorar todos los archivos .txt dentro de la carpeta data/
+data/*.txt
+
+# Opcional: ignora backups y archivos temporales
+*.bak
+*.tmp
+.DS_Store
+
+# Si usas VSCode
+.vscode/
