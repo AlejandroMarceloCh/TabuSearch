@@ -28,9 +28,7 @@ El sistema **se adapta automáticamente** según el tamaño de la instancia:
 ```
 proyectoV2/
 ├── 📋 README.md                    # Este archivo
-├── 🚀 main.jl                      # Punto de entrada principal
-├── 🌙 experimentos_enormes_nocturno.jl  # Experimentos automáticos
-│
+├── 🚀 main.jl                      # Punto de entrada principal│
 ├── 🧠 core/                        # Núcleo del sistema
 │   ├── config_instancia.jl        # Configuración de instancias
 │   ├── base.jl                     # Estructuras y funciones base
