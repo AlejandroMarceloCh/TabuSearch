@@ -53,8 +53,7 @@ proyectoV2/
 │       └── enormes_vecindarios.jl
 │
 ├── 🛠️ utils/                       # Utilidades
-│   ├── data_loader.jl              # Cargador de instancias
-│   └── data_loader2.jl             # Cargador alternativo
+│   └──data_loader.jl              # Cargador de instancias
 │
 └── 📊 data/                        # Instancias del problema
     ├── instancia01.txt - instancia20.txt
